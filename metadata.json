@@ -1,0 +1,6 @@
+{
+  "name": "Express Delivery Driver Portal",
+  "description": "Carrier simulator with shipment reception API (POST /api/carrier/ship), printable A6 bordereau stickers, mobile driver portal, and outbound webhook dispatcher.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
