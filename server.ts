@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import { generateBarcodeSVG } from './src/utils/barcode.js';
 
 interface Parcel {
@@ -881,28 +880,22 @@ app.get('/api/health', (req, res) => {
   // ==========================================
   // 5. VITE SPA INTEGRATION & SERVER LISTENER
   // ==========================================
-  async function startServer() {
-    if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-      const vite = await createViteServer({
+  if (process.env.NODE_ENV !== 'production') {
+    import('vite').then(({ createServer: createViteServer }) => {
+      createViteServer({
         server: { middlewareMode: true },
         appType: 'spa'
+      }).then((vite) => {
+        app.use(vite.middlewares);
+        app.listen(PORT, '0.0.0.0', () => {
+          console.log(`Express Delivery Driver Portal running on http://localhost:${PORT}`);
+        });
+      }).catch((err) => {
+        console.error('Failed to start Vite dev server:', err);
       });
-      app.use(vite.middlewares);
-    } else if (!process.env.VERCEL) {
-      const distPath = path.join(process.cwd(), 'dist');
-      app.use(express.static(distPath));
-      app.get('*', (req, res) => {
-        res.sendFile(path.join(distPath, 'index.html'));
-      });
-    }
-
-    if (!process.env.VERCEL) {
-      app.listen(PORT, '0.0.0.0', () => {
-        console.log(`Express Delivery Driver Portal running on http://localhost:${PORT}`);
-      });
-    }
+    }).catch((err) => {
+      console.error('Failed to import Vite in development:', err);
+    });
   }
-
-  startServer();
 
   export default app;
