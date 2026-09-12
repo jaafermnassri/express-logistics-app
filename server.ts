@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { generateBarcodeSVG } from './src/utils/barcode';
+import { generateBarcodeSVG } from './src/utils/barcode.js';
 
 interface Parcel {
   id: string;
