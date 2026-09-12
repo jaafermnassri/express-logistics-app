@@ -43,16 +43,19 @@ export const DriverView: React.FC<DriverViewProps> = ({
     switch (status) {
       case 'EN_TRANSIT':
       case 'EXPEDIE':
+      case 'DISPATCHED':
+      case 'SHIPPED':
         return (
           <span className="text-xs font-bold px-2.5 py-1 rounded bg-[#673ab7]/10 text-[#673ab7] border border-[#673ab7]/20">
-            {status === 'EXPEDIE' ? 'Expédié' : 'En Transit'}
+            {status === 'EXPEDIE' || status === 'DISPATCHED' || status === 'SHIPPED' ? 'Expédié' : 'En Transit'}
           </span>
         );
       case 'EN_ATTENTE':
       case 'PENDING':
+      case 'CONFIRMED':
         return (
           <span className="text-xs font-bold px-2.5 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200">
-            En Attente
+            {status === 'CONFIRMED' ? 'Confirmé' : 'En Attente'}
           </span>
         );
       case 'DELIVERED':
@@ -170,7 +173,7 @@ export const DriverView: React.FC<DriverViewProps> = ({
 
                 {/* Card Footer: Only the requested 3 buttons */}
                 <div className="p-3 bg-gray-50 border-t border-gray-100 space-y-2">
-                  {(['EN_TRANSIT', 'EXPEDIE', 'EN_ATTENTE', 'PENDING'].includes(parcel.status)) && (
+                  {(['EN_TRANSIT', 'EXPEDIE', 'EN_ATTENTE', 'PENDING', 'DISPATCHED', 'SHIPPED', 'CONFIRMED'].includes(parcel.status)) && (
                     <div className="grid grid-cols-2 gap-2">
                       {/* Button: Encaisser & Livrer (Green) */}
                       <button

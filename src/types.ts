@@ -1,4 +1,4 @@
-export type ParcelStatus = 'EN_TRANSIT' | 'DELIVERED' | 'RETURNED' | 'PENDING' | 'EN_ATTENTE' | 'EXPEDIE';
+export type ParcelStatus = 'EN_TRANSIT' | 'DELIVERED' | 'RETURNED' | 'PENDING' | 'EN_ATTENTE' | 'EXPEDIE' | 'DISPATCHED' | 'SHIPPED' | 'CONFIRMED';
 
 export interface Parcel {
   id: string;

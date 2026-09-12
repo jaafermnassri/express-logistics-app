@@ -14,7 +14,7 @@ interface Parcel {
   codAmount: number;
   orderId: string;
   webhookUrl: string;
-  status: 'EN_TRANSIT' | 'DELIVERED' | 'RETURNED' | 'PENDING' | 'EN_ATTENTE' | 'EXPEDIE';
+  status: 'EN_TRANSIT' | 'DELIVERED' | 'RETURNED' | 'PENDING' | 'EN_ATTENTE' | 'EXPEDIE' | 'DISPATCHED' | 'SHIPPED' | 'CONFIRMED';
   createdAt: string;
   updatedAt: string;
   deliveredAt?: string;
@@ -22,6 +22,8 @@ interface Parcel {
   returnReason?: string;
   driverNotes?: string;
   codCollected?: number;
+  driverId?: string;
+  carrierId?: string;
 }
 
 interface WebhookLog {
@@ -573,6 +575,13 @@ app.get('/api/health', (req, res) => {
       const trackingNumber = body.trackingNumber || generateTrackingNumber();
       const now = new Date().toISOString();
 
+      // Support status passed from Markitik or carrier webhook (e.g. DISPATCHED, PENDING, SHIPPED, CONFIRMED, EXPEDIE, EN_TRANSIT)
+      const inputStatus = String(body.status || body.statut || 'EXPEDIE').toUpperCase().trim();
+      let parcelStatus: Parcel['status'] = 'EXPEDIE';
+      if (['DISPATCHED', 'PENDING', 'SHIPPED', 'CONFIRMED', 'EN_TRANSIT', 'EXPEDIE', 'EN_ATTENTE'].includes(inputStatus)) {
+        parcelStatus = inputStatus as Parcel['status'];
+      }
+
       const newParcel: Parcel = {
         id: `parcel_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         trackingNumber: trackingNumber,
@@ -584,7 +593,9 @@ app.get('/api/health', (req, res) => {
         governorate: String(governorate).trim(),
         codAmount: parsedCod,
         webhookUrl: String(webhookUrl).trim(),
-        status: 'EXPEDIE',
+        status: parcelStatus,
+        driverId: body.driverId || body.driver_id || undefined,
+        carrierId: body.carrierId || body.carrier_id || undefined,
         createdAt: now,
         updatedAt: now
       };
@@ -731,17 +742,39 @@ app.get('/api/health', (req, res) => {
   // 3. PARCEL MANAGEMENT APIS (FOR DRIVER UI & PORTAL)
   // ==========================================
   app.get('/api/carrier/parcels', (req, res) => {
+    // Disable HTTP Caching so the driver portal doesn't get stuck on 304 Not Modified cached responses
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     const { status, search } = req.query;
     let list = Array.from(parcels.values()).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
-    if (status && typeof status === 'string' && status !== 'ALL') {
-      list = list.filter((p) => p.status === status);
+    // Filter by status if provided (and not ALL)
+    // Ensures newly dispatched parcels with statuses like DISPATCHED, PENDING, SHIPPED, CONFIRMED, or EXPEDIE
+    // are included immediately when querying active or transit deliveries.
+    if (status && typeof status === 'string' && status.toUpperCase() !== 'ALL') {
+      const s = status.toUpperCase().trim();
+      if (['EN_TRANSIT', 'TRANSIT', 'EXPEDIE', 'DISPATCHED', 'SHIPPED', 'CONFIRMED', 'PENDING', 'EN_ATTENTE', 'ACTIVE'].includes(s)) {
+        list = list.filter((p) =>
+          ['EN_TRANSIT', 'EXPEDIE', 'DISPATCHED', 'SHIPPED', 'CONFIRMED', 'PENDING', 'EN_ATTENTE'].includes(p.status)
+        );
+      } else if (['DELIVERED', 'LIVRE', 'LIVRÉ'].includes(s)) {
+        list = list.filter((p) => p.status === 'DELIVERED');
+      } else if (['RETURNED', 'RETOURNE', 'RETOURNÉ', 'RETURN', 'CANCELLED', 'REFUSED', 'REFUS'].includes(s)) {
+        list = list.filter((p) => p.status === 'RETURNED');
+      } else {
+        list = list.filter((p) => p.status === status || p.status.toUpperCase() === s);
+      }
     }
 
+    // Explicitly do not restrict by driverId or carrierId so all newly dispatched orders
+    // appear immediately in the carrier driver portal for any active driver.
+
     if (search && typeof search === 'string') {
-      const q = search.toLowerCase();
+      const q = search.toLowerCase().trim();
       list = list.filter(
         (p) =>
           p.trackingNumber.toLowerCase().includes(q) ||
@@ -754,9 +787,10 @@ app.get('/api/health', (req, res) => {
       );
     }
 
-    // Compute stats
+    // Compute stats across all parcels
     const all = Array.from(parcels.values());
-    const isActive = (s: string) => ['EN_TRANSIT', 'EXPEDIE', 'EN_ATTENTE', 'PENDING'].includes(s);
+    const isActive = (s: string) =>
+      ['EN_TRANSIT', 'EXPEDIE', 'DISPATCHED', 'SHIPPED', 'CONFIRMED', 'EN_ATTENTE', 'PENDING'].includes(s);
     const stats = {
       total: all.length,
       enTransit: all.filter((p) => isActive(p.status)).length,
@@ -774,6 +808,11 @@ app.get('/api/health', (req, res) => {
   });
 
   app.get('/api/carrier/parcels/:trackingNumber', (req, res) => {
+    // Disable HTTP Caching on single parcel queries as well
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     const { trackingNumber } = req.params;
     const parcel = parcels.get(trackingNumber.toUpperCase()) || parcels.get(trackingNumber);
 
@@ -795,7 +834,7 @@ app.get('/api/health', (req, res) => {
       targetStatus = 'DELIVERED';
     } else if (['RETURNED', 'RETOURNE', 'RETOURNÉ', 'RETURN', 'CANCELLED', 'REFUSED', 'REFUS'].includes(normalizedStatus)) {
       targetStatus = 'RETURNED';
-    } else if (['EN_TRANSIT', 'TRANSIT', 'EXPEDIE', 'EXPÉDIÉ', 'EN_ATTENTE', 'PENDING'].includes(normalizedStatus)) {
+    } else if (['EN_TRANSIT', 'TRANSIT', 'EXPEDIE', 'EXPÉDIÉ', 'EN_ATTENTE', 'PENDING', 'DISPATCHED', 'SHIPPED', 'CONFIRMED'].includes(normalizedStatus)) {
       targetStatus = 'EN_TRANSIT';
     } else {
       return res.status(400).json({ error: 'Invalid status. Must be DELIVERED (LIVRÉ), RETURNED (RETOURNÉ), or EN_TRANSIT' });
